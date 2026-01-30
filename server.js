@@ -12,6 +12,7 @@ import { numEventsBefore } from './num_events_before.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// On Render: set API_KEY in Environment. Locally: use api_key.txt (ignored by git).
 function getApiKey() {
   if (process.env.API_KEY) return process.env.API_KEY.trim();
   const path = join(__dirname, 'api_key.txt');
@@ -36,7 +37,7 @@ function requireApiKey(req, res, next) {
 }
 
 app.get('/events', requireApiKey, async (req, res) => {
-  const url = req.query.url ?? req.body?.url;
+  const url = req.query.url;
   if (!url || typeof url !== 'string') {
     return res.status(400).json({ error: 'Missing or invalid url.' });
   }
@@ -64,8 +65,8 @@ app.post('/events', requireApiKey, async (req, res) => {
 });
 
 app.get('/num-events-before', requireApiKey, async (req, res) => {
-  const url = req.query.url ?? req.body?.url;
-  const eventName = req.query.eventName ?? req.body?.eventName;
+  const url = req.query.url;
+  const eventName = req.query.eventName;
   if (!url || typeof url !== 'string') {
     return res.status(400).json({ error: 'Missing or invalid url.' });
   }

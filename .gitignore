@@ -1,4 +1,5 @@
 node_modules/
+api_key.txt
 
 # Puppeteer / Chrome
 .local-chromium/
