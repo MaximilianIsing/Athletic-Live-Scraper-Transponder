@@ -113,8 +113,23 @@ function parseEventText(text) {
  * @param {string} url - Meet page URL
  * @returns {Promise<Array<{ name: string, group: string, phase: string, inField: boolean, finished: boolean }>>}
  */
+/** Launch options for Puppeteer (headless Chrome on Render/Linux). */
+function getLaunchOptions() {
+  const opts = {
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--disable-software-rasterizer',
+    ],
+  };
+  return opts;
+}
+
 export async function getEventListElements(url) {
-  const browser = await puppeteer.launch({ headless: true });
+  const browser = await puppeteer.launch(getLaunchOptions());
   try {
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });

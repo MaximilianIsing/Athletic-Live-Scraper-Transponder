@@ -1,5 +1,6 @@
 node_modules/
 api_key.txt
+test-server.js
 
 # Puppeteer / Chrome
 .local-chromium/

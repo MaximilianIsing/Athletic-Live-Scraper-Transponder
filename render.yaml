@@ -1,0 +1,15 @@
+# Render Web Service — same pattern as Path-Pal-College-Scanner:
+# install browser at runtime so Chrome is available in the container.
+services:
+  - type: web
+    name: athletic-live-scraper-transponder
+    runtime: node
+    plan: free
+
+    buildCommand: npm install
+    startCommand: npx puppeteer browsers install chrome && npm start
+
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # API_KEY must be set in Render Dashboard → Environment
