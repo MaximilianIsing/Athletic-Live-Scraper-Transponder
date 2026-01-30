@@ -67,14 +67,18 @@ app.post('/events', requireApiKey, async (req, res) => {
 app.get('/num-events-before', requireApiKey, async (req, res) => {
   const url = req.query.url;
   const eventName = req.query.eventName;
+  const group = req.query.group;
   if (!url || typeof url !== 'string') {
     return res.status(400).json({ error: 'Missing or invalid url.' });
   }
   if (!eventName || typeof eventName !== 'string') {
     return res.status(400).json({ error: 'Missing or invalid eventName.' });
   }
+  if (!group || typeof group !== 'string') {
+    return res.status(400).json({ error: 'Missing or invalid group.' });
+  }
   try {
-    const numEventsBeforeCount = await numEventsBefore(url, eventName);
+    const numEventsBeforeCount = await numEventsBefore(url, eventName, group);
     res.json({ numEventsBefore: numEventsBeforeCount });
   } catch (err) {
     console.error(err);
@@ -85,14 +89,18 @@ app.get('/num-events-before', requireApiKey, async (req, res) => {
 app.post('/num-events-before', requireApiKey, async (req, res) => {
   const url = req.body?.url;
   const eventName = req.body?.eventName;
+  const group = req.body?.group;
   if (!url || typeof url !== 'string') {
     return res.status(400).json({ error: 'Missing or invalid url.' });
   }
   if (!eventName || typeof eventName !== 'string') {
     return res.status(400).json({ error: 'Missing or invalid eventName.' });
   }
+  if (!group || typeof group !== 'string') {
+    return res.status(400).json({ error: 'Missing or invalid group.' });
+  }
   try {
-    const numEventsBeforeCount = await numEventsBefore(url, eventName);
+    const numEventsBeforeCount = await numEventsBefore(url, eventName, group);
     res.json({ numEventsBefore: numEventsBeforeCount });
   } catch (err) {
     console.error(err);

@@ -81,20 +81,21 @@ Content-Type: application/json
 
 ## GET /num-events-before
 
-Returns how many events appear before a given event name in the meet’s event list.
+Returns how many events appear before a given event (matched by both name and group) in the meet’s event list.
 
 **Query parameters**
 
-| Name        | Type   | Required | Description                                  |
-|-------------|--------|----------|----------------------------------------------|
-| `url`       | string | Yes      | Full URL of the meet/events page.            |
-| `eventName` | string | Yes      | Event name to find (e.g. `Girls 4x400mR`).   |
-| `api_key`   | string | Yes*     | API key (if not sent via header).            |
+| Name        | Type   | Required | Description                                                    |
+|-------------|--------|----------|----------------------------------------------------------------|
+| `url`       | string | Yes      | Full URL of the meet/events page.                             |
+| `eventName` | string | Yes      | Event name to find (e.g. `Girls 4x400mR`).                     |
+| `group`     | string | Yes      | Event group (e.g. `Varsity`, `Novice Prelims`, `Freshmen`).    |
+| `api_key`   | string | Yes*     | API key (if not sent via header).                             |
 
 **Example**
 
 ```
-GET https://athletic-live-scraper-transponder.onrender.com/num-events-before?url=https://armorytrack.live/meets/54971/events&eventName=Girls%204x400mR&api_key=YOUR_KEY
+GET https://athletic-live-scraper-transponder.onrender.com/num-events-before?url=https://armorytrack.live/meets/54971/events&eventName=Girls%204x400mR&group=Varsity&api_key=YOUR_KEY
 ```
 
 **Success (200)**
@@ -115,11 +116,12 @@ Same as GET /num-events-before; parameters are sent in the JSON body.
 
 **Body**
 
-| Name        | Type   | Required | Description                                  |
-|-------------|--------|----------|----------------------------------------------|
-| `url`       | string | Yes      | Full URL of the meet/events page.            |
-| `eventName` | string | Yes      | Event name to find (e.g. `Girls 4x400mR`).   |
-| `api_key`   | string | Yes*     | API key (if not sent via header).            |
+| Name        | Type   | Required | Description                                                    |
+|-------------|--------|----------|----------------------------------------------------------------|
+| `url`       | string | Yes      | Full URL of the meet/events page.                             |
+| `eventName` | string | Yes      | Event name to find (e.g. `Girls 4x400mR`).                     |
+| `group`     | string | Yes      | Event group (e.g. `Varsity`, `Novice Prelims`, `Freshmen`).   |
+| `api_key`   | string | Yes*     | API key (if not sent via header).                             |
 
 **Example**
 
@@ -130,6 +132,7 @@ Content-Type: application/json
 {
   "url": "https://armorytrack.live/meets/54971/events",
   "eventName": "Girls 4x400mR",
+  "group": "Varsity",
   "api_key": "YOUR_KEY"
 }
 ```
@@ -154,11 +157,29 @@ No authentication. Use for health checks (e.g. Render).
 
 ---
 
+## Invalid link and no events
+
+**Invalid link** (bad URL, 404, timeout, or page never loads):
+
+| Endpoint             | Status | Response |
+|----------------------|--------|----------|
+| GET/POST `/events`   | **500** | `{ "error": "Failed to fetch events.", "message": "<Puppeteer/error message>" }` |
+| GET/POST `/num-events-before` | **500** | `{ "error": "Failed to compute num events before.", "message": "<Puppeteer/error message>" }` |
+
+**No events** (page loads but no events are found, or all are filtered out):
+
+| Endpoint             | Status | Response |
+|----------------------|--------|----------|
+| GET/POST `/events`   | **200** | `{ "events": [] }` |
+| GET/POST `/num-events-before` | **200** | `{ "numEventsBefore": -1 }` (no matching event in the list) |
+
+---
+
 ## Error responses
 
 | Status | Meaning |
 |--------|--------|
-| **400** | Missing or invalid `url` or `eventName`. |
+| **400** | Missing or invalid `url`, `eventName`, or `group`. |
 | **401** | Invalid or missing API key. |
 | **500** | Server error (e.g. fetch or scrape failed). Body includes `error` and optionally `message`. |
 | **503** | Server has no API key configured. |
