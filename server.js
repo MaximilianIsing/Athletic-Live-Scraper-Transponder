@@ -22,6 +22,10 @@ function getApiKey() {
 
 const API_KEY = getApiKey();
 
+// Only one scrape at a time to avoid multiple Chrome instances and memory spikes.
+let scrapeInProgress = false;
+const REQUEST_TIMEOUT_MS = 90_000;
+
 const app = express();
 app.use(express.json());
 
@@ -36,35 +40,54 @@ function requireApiKey(req, res, next) {
   next();
 }
 
-app.get('/events', requireApiKey, async (req, res) => {
+function requireScrapeSlot(req, res, next) {
+  if (scrapeInProgress) {
+    return res.status(503).json({ error: 'Scraper busy, try again shortly.' });
+  }
+  next();
+}
+
+app.get('/events', requireApiKey, requireScrapeSlot, async (req, res) => {
+  req.setTimeout(REQUEST_TIMEOUT_MS);
+  res.setTimeout(REQUEST_TIMEOUT_MS);
   const url = req.query.url;
   if (!url || typeof url !== 'string') {
     return res.status(400).json({ error: 'Missing or invalid url.' });
   }
+  scrapeInProgress = true;
   try {
     const events = await getEventListElements(url);
     res.json({ events });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch events.', message: err.message });
+  } finally {
+    scrapeInProgress = false;
   }
 });
 
-app.post('/events', requireApiKey, async (req, res) => {
+app.post('/events', requireApiKey, requireScrapeSlot, async (req, res) => {
+  req.setTimeout(REQUEST_TIMEOUT_MS);
+  res.setTimeout(REQUEST_TIMEOUT_MS);
   const url = req.body?.url;
   if (!url || typeof url !== 'string') {
     return res.status(400).json({ error: 'Missing or invalid url.' });
   }
+  scrapeInProgress = true;
   try {
     const events = await getEventListElements(url);
     res.json({ events });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch events.', message: err.message });
+  } finally {
+    scrapeInProgress = false;
   }
 });
 
-app.get('/num-events-before', requireApiKey, async (req, res) => {
+app.get('/num-events-before', requireApiKey, requireScrapeSlot, async (req, res) => {
+  req.setTimeout(REQUEST_TIMEOUT_MS);
+  res.setTimeout(REQUEST_TIMEOUT_MS);
   const url = req.query.url;
   const eventName = req.query.eventName;
   const group = req.query.group;
@@ -77,16 +100,21 @@ app.get('/num-events-before', requireApiKey, async (req, res) => {
   if (!group || typeof group !== 'string') {
     return res.status(400).json({ error: 'Missing or invalid group.' });
   }
+  scrapeInProgress = true;
   try {
     const numEventsBeforeCount = await numEventsBefore(url, eventName, group);
     res.json({ numEventsBefore: numEventsBeforeCount });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to compute num events before.', message: err.message });
+  } finally {
+    scrapeInProgress = false;
   }
 });
 
-app.post('/num-events-before', requireApiKey, async (req, res) => {
+app.post('/num-events-before', requireApiKey, requireScrapeSlot, async (req, res) => {
+  req.setTimeout(REQUEST_TIMEOUT_MS);
+  res.setTimeout(REQUEST_TIMEOUT_MS);
   const url = req.body?.url;
   const eventName = req.body?.eventName;
   const group = req.body?.group;
@@ -99,12 +127,15 @@ app.post('/num-events-before', requireApiKey, async (req, res) => {
   if (!group || typeof group !== 'string') {
     return res.status(400).json({ error: 'Missing or invalid group.' });
   }
+  scrapeInProgress = true;
   try {
     const numEventsBeforeCount = await numEventsBefore(url, eventName, group);
     res.json({ numEventsBefore: numEventsBeforeCount });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to compute num events before.', message: err.message });
+  } finally {
+    scrapeInProgress = false;
   }
 });
 

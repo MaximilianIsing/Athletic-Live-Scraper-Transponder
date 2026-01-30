@@ -109,13 +109,35 @@ function parseEventText(text) {
 }
 
 /**
+ * Normalizes a meet URL to the /events page.
+ * - /meets/60867 → /meets/60867/events
+ * - /meets/60867/follow → /meets/60867/events
+ * - /meets/60867/events/individual/2227014 → /meets/60867/events
+ * @param {string} urlString - Any meet page URL
+ * @returns {string} URL that ends with /events
+ */
+function normalizeEventsUrl(urlString) {
+  let url;
+  try {
+    url = new URL(urlString);
+  } catch {
+    return urlString;
+  }
+  const match = url.pathname.match(/\/meets\/([^/]+)/);
+  if (!match) return urlString;
+  const meetId = match[1];
+  const eventsPath = `/meets/${meetId}/events`;
+  return `${url.origin}${eventsPath}`;
+}
+
+/**
  * Fetches the page at the given URL and returns all events with name, group, and phase.
- * @param {string} url - Meet page URL
+ * @param {string} url - Meet page URL (will be normalized to /events if needed)
  * @returns {Promise<Array<{ name: string, group: string, phase: string, inField: boolean, finished: boolean }>>}
  */
-/** Launch options for Puppeteer (headless Chrome on Render/Linux). */
+/** Launch options for Puppeteer (headless Chrome on Render/Linux). Reduces memory use. */
 function getLaunchOptions() {
-  const opts = {
+  return {
     headless: true,
     args: [
       '--no-sandbox',
@@ -123,36 +145,65 @@ function getLaunchOptions() {
       '--disable-dev-shm-usage',
       '--disable-gpu',
       '--disable-software-rasterizer',
+      '--disable-background-networking',
+      '--disable-default-apps',
+      '--disable-sync',
+      '--no-first-run',
+      '--disable-extensions',
+      '--mute-audio',
     ],
   };
-  return opts;
 }
 
+const SCRAPE_TIMEOUT_MS = 60_000;
+
 export async function getEventListElements(url) {
-  const browser = await puppeteer.launch(getLaunchOptions());
+  const eventsUrl = normalizeEventsUrl(url);
+  let browser;
+  let page;
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error('Scrape timeout')),
+      SCRAPE_TIMEOUT_MS
+    );
+  });
+
   try {
-    const page = await browser.newPage();
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-    await page.waitForSelector(LIST_SELECTOR, { timeout: 15000 });
+    browser = await puppeteer.launch(getLaunchOptions());
+    page = await browser.newPage();
 
-    const raw = await page.evaluate((selector) => {
-      const containers = document.querySelectorAll(selector);
-      const container = Array.from(containers).find(
-        (el) => el.closest('app-event-sidebar') !== null
-      ) ?? Array.from(containers).sort(
-        (a, b) => b.children.length - a.children.length
-      )[0];
-      if (!container) return [];
+    const work = (async () => {
+      await page.goto(eventsUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+      await page.waitForSelector(LIST_SELECTOR, { timeout: 15000 });
 
-      return Array.from(container.children).map((el) =>
-        (el.textContent ?? '').trim()
-      );
-    }, LIST_SELECTOR);
+      const raw = await page.evaluate((selector) => {
+        const containers = document.querySelectorAll(selector);
+        const container = Array.from(containers).find(
+          (el) => el.closest('app-event-sidebar') !== null
+        ) ?? Array.from(containers).sort(
+          (a, b) => b.children.length - a.children.length
+        )[0];
+        if (!container) return [];
 
-    const events = raw.map(parseEventText).filter((event) => !isFieldEvent(event.name));
-    const reordered = reorderInFieldEvents(events);
-    return reordered.filter((ev) => !ev.finished);
+        return Array.from(container.children).map((el) =>
+          (el.textContent ?? '').trim()
+        );
+      }, LIST_SELECTOR);
+
+      const events = raw.map(parseEventText).filter((event) => !isFieldEvent(event.name));
+      const reordered = reorderInFieldEvents(events);
+      return reordered.filter((ev) => !ev.finished);
+    })();
+
+    return await Promise.race([work, timeoutPromise]);
   } finally {
-    await browser.close();
+    if (timeoutId) clearTimeout(timeoutId);
+    try {
+      if (page) await page.close();
+    } catch (_) {}
+    try {
+      if (browser) await browser.close();
+    } catch (_) {}
   }
 }

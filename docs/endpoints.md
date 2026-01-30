@@ -182,7 +182,7 @@ No authentication. Use for health checks (e.g. Render).
 | **400** | Missing or invalid `url`, `eventName`, or `group`. |
 | **401** | Invalid or missing API key. |
 | **500** | Server error (e.g. fetch or scrape failed). Body includes `error` and optionally `message`. |
-| **503** | Server has no API key configured. |
+| **503** | Server has no API key configured, or scraper busy (only one scrape at a time; retry shortly). |
 
 Error body shape:
 
