@@ -56,8 +56,8 @@ app.get('/events', requireApiKey, requireScrapeSlot, async (req, res) => {
   }
   scrapeInProgress = true;
   try {
-    const events = await getEventListElements(url);
-    res.json({ events });
+    const { events, title } = await getEventListElements(url);
+    res.json({ title, events });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch events.', message: err.message });
@@ -75,8 +75,8 @@ app.post('/events', requireApiKey, requireScrapeSlot, async (req, res) => {
   }
   scrapeInProgress = true;
   try {
-    const events = await getEventListElements(url);
-    res.json({ events });
+    const { events, title } = await getEventListElements(url);
+    res.json({ title, events });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch events.', message: err.message });

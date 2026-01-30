@@ -13,7 +13,7 @@ import { getEventListElements } from './get_events.js';
  * @returns {Promise<number>} The number of events before that event, or -1 if not found
  */
 export async function numEventsBefore(url, eventName, group) {
-  const events = await getEventListElements(url);
+  const { events } = await getEventListElements(url);
   const index = events.findIndex(
     (ev) => ev.name === eventName && ev.group === group
   );

@@ -6,9 +6,13 @@ import puppeteer from 'puppeteer';
 
 const LIST_SELECTOR = 'div.list-group';
 
-const GROUP_PATTERN = /^\s*(.+?)\s+((?:Varsity|Novice|Freshmen)(?:\s+(?:Prelims|Finals))?)\s+(.+)$/;
-// When there's no group (e.g. "Men Hept 60m        Results"), parse name + phase from the end.
-const FALLBACK_PHASE_PATTERN = /^\s*(.+?)\s{2,}(Start Lists|Entries|Results|Done|Unofficial|Official|Live|Prelims|Finals)\s*$/i;
+// Group: Varsity/Novice/Freshmen/Freshman with optional Prelims/Finals, or standalone Prelims/Finals.
+// Longer alternatives first so "Varsity Finals" matches before "Varsity".
+const GROUP_PATTERN = /^\s*(.+?)\s+((?:Varsity\s+Finals|Varsity\s+Prelims|Varsity|Novice\s+Finals|Novice\s+Prelims|Novice|Freshmen\s+Finals|Freshmen\s+Prelims|Freshmen|Freshman\s+Finals|Freshman\s+Prelims|Freshman|Prelims|Finals))\s+(.+)$/i;
+// When there's no group (e.g. "Men Hept 60m        Results"), parse name + phase only.
+const FALLBACK_PHASE_PATTERN = /^\s*(.+?)\s{2,}(Start Lists|Entries|Results|Done|Unofficial|Official|Live)\s*$/i;
+// Strip clock times and optional time zones so they don't break name/phase parsing (e.g. "5:30 PM", "6:45 PM EST").
+const TIME_PATTERN = /\d{1,2}:\d{2}\s*(?:AM|PM)?\s*(?:EST|EDT|CST|CDT|MST|MDT|PST|PDT|ET|CT|MT|PT|UTC)?/gi;
 
 const IN_FIELD_PREFIXES = [
   'Boys 55', 'Girls 55', 'Men 55', 'Women 55',
@@ -16,7 +20,7 @@ const IN_FIELD_PREFIXES = [
 ];
 
 const FIELD_EVENT_KEYWORDS = [
-  'Jump', 'High', 'Vault', 'Put', 'Shot', 'Throw', 'Triple', 'Long',
+  'Jump', 'High', 'Vault', 'Put', 'Shot', 'Throw', 'Triple', 'Long', "Weight"
 ];
 
 function isInField(name) {
@@ -93,18 +97,20 @@ function stripLeadingNumbersFromPhase(phase) {
 
 function parseEventText(text) {
   const trimmed = text.trim();
-  const m = trimmed.match(GROUP_PATTERN);
+  // Remove clock times so they don't break phase extraction (e.g. "Boys 55mH  5:30 PM   Prelims Official").
+  const textWithoutTimes = trimmed.replace(TIME_PATTERN, '').replace(/\s{2,}/g, '  ').trim();
+  const m = textWithoutTimes.match(GROUP_PATTERN);
   let name, rawPhase;
   if (m) {
     name = m[1].trim();
     rawPhase = m[3].trim();
   } else {
-    const fallback = trimmed.match(FALLBACK_PHASE_PATTERN);
+    const fallback = textWithoutTimes.match(FALLBACK_PHASE_PATTERN);
     if (fallback) {
       name = fallback[1].trim();
       rawPhase = fallback[2].trim();
     } else {
-      name = trimmed;
+      name = textWithoutTimes;
       rawPhase = '';
     }
   }
@@ -146,9 +152,9 @@ function normalizeEventsUrl(urlString) {
 }
 
 /**
- * Fetches the page at the given URL and returns all events with name, group, and phase.
+ * Fetches the page at the given URL and returns the meet title (og:title) and all events with name, group, and phase.
  * @param {string} url - Meet page URL (will be normalized to /events if needed)
- * @returns {Promise<Array<{ name: string, group: string, phase: string, inField: boolean, finished: boolean }>>}
+ * @returns {Promise<{ events: Array<{ name: string, group: string, phase: string, inField: boolean, finished: boolean }>, title: string|null }>}
  */
 /** Launch options for Puppeteer (headless Chrome on Render/Linux). Reduces memory use. */
 function getLaunchOptions() {
@@ -193,9 +199,14 @@ export async function getEventListElements(url) {
       await page.waitForSelector(LIST_SELECTOR, { timeout: 15000 });
 
       const raw = await page.evaluate((selector) => {
-        const containers = document.querySelectorAll(selector);
-        // Use the last list-group on the page (events list); earlier ones are often nav (Home, Live, etc.).
-        const container = containers.length > 0 ? containers[containers.length - 1] : null;
+        const containers = Array.from(document.querySelectorAll(selector));
+        if (containers.length === 0) return [];
+
+        // Prefer the list inside app-event-sidebar; else use the one with the most children (events list).
+        const inSidebar = containers.find((el) => el.closest('app-event-sidebar') !== null);
+        const container = inSidebar ?? containers.reduce((best, el) =>
+          (el.children.length > (best?.children.length ?? 0) ? el : best)
+        );
         if (!container) return [];
 
         return Array.from(container.children).map((el) =>
@@ -205,7 +216,12 @@ export async function getEventListElements(url) {
 
       const events = raw.map(parseEventText).filter((event) => !isFieldEvent(event.name));
       const reordered = reorderInFieldEvents(events);
-      return reordered.filter((ev) => !ev.finished);
+      const filtered = reordered.filter((ev) => !ev.finished);
+      const title = await page.evaluate(() => {
+        const m = document.querySelector('meta[property="og:title"]');
+        return m ? (m.getAttribute('content') || '').trim() || null : null;
+      });
+      return { events: filtered, title };
     })();
 
     return await Promise.race([work, timeoutPromise]);

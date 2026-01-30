@@ -19,7 +19,7 @@ Missing or invalid keys return `401 Unauthorized`.
 
 ## GET /events
 
-Returns the list of events for a meet page (non-finished, reordered).
+Returns the meet title (from og:title) and the list of events for a meet page (non-finished, reordered).
 
 **Query parameters**
 
@@ -38,6 +38,7 @@ GET https://athletic-live-scraper-transponder.onrender.com/events?url=https://ar
 
 ```json
 {
+  "title": "Meet Name Here",
   "events": [
     {
       "name": "Boys 4x800mR",
@@ -170,7 +171,7 @@ No authentication. Use for health checks (e.g. Render).
 
 | Endpoint             | Status | Response |
 |----------------------|--------|----------|
-| GET/POST `/events`   | **200** | `{ "events": [] }` |
+| GET/POST `/events`   | **200** | `{ "title": null or string, "events": [] }` |
 | GET/POST `/num-events-before` | **200** | `{ "numEventsBefore": -1 }` (no matching event in the list) |
 
 ---
