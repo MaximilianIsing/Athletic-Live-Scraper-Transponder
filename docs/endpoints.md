@@ -44,6 +44,7 @@ GET https://athletic-live-scraper-transponder.onrender.com/events?url=https://ar
       "name": "Boys 4x800mR",
       "group": "Varsity",
       "phase": "Live",
+      "time": "5:30 PM",
       "inField": false,
       "finished": false
     }

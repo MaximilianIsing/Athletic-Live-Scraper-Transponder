@@ -44,8 +44,8 @@ function isEventFinished(event) {
  * existing order) and remove them from their previous positions.
  * Detection: scan from end of list to beginning; if we ever see finished then
  * not finished, there is a problem.
- * @param {Array<{ name: string, group: string, phase: string, inField: boolean, finished: boolean }>} events
- * @returns {Array<{ name: string, group: string, phase: string, inField: boolean, finished: boolean }>}
+ * @param {Array<{ name: string, group: string, phase: string, time: string, inField: boolean, finished: boolean }>} events
+ * @returns {Array<{ name: string, group: string, phase: string, time: string, inField: boolean, finished: boolean }>}
  */
 function reorderInFieldEvents(events) {
   let seenFinished = false;
@@ -89,7 +89,7 @@ function reorderInFieldEvents(events) {
  * inField is true for 55m/60m track events (Boys/Girls/Men/Women 55 or 60).
  * finished is true when phase is Results, Done, Unofficial, or Official.
  * @param {string} text
- * @returns {{ name: string, group: string, phase: string, inField: boolean, finished: boolean }}
+ * @returns {{ name: string, group: string, phase: string, time: string, inField: boolean, finished: boolean }}
  */
 function stripLeadingNumbersFromPhase(phase) {
   return phase.replace(/^\d+[.\s]*/, '').trim();
@@ -97,6 +97,9 @@ function stripLeadingNumbersFromPhase(phase) {
 
 function parseEventText(text) {
   const trimmed = text.trim();
+  // Extract time before stripping (e.g. "5:30 PM" or "6:45 PM EST"); use "Unknown" if none.
+  const timeMatch = trimmed.match(TIME_PATTERN);
+  const time = (timeMatch && timeMatch[0]) ? timeMatch[0].trim() : 'Unknown';
   // Remove clock times so they don't break phase extraction (e.g. "Boys 55mH  5:30 PM   Prelims Official").
   const textWithoutTimes = trimmed.replace(TIME_PATTERN, '').replace(/\s{2,}/g, '  ').trim();
   const m = textWithoutTimes.match(GROUP_PATTERN);
@@ -118,12 +121,13 @@ function parseEventText(text) {
   const phase = stripLeadingNumbersFromPhase(rawPhase);
   const finished = FINISHED_PHASES.includes(phase);
   if (!m) {
-    return { name, group: 'None', phase, inField, finished };
+    return { name, group: 'None', phase, time, inField, finished };
   }
   return {
     name,
     group: m[2] || 'None',
     phase,
+    time,
     inField,
     finished,
   };
@@ -154,7 +158,7 @@ function normalizeEventsUrl(urlString) {
 /**
  * Fetches the page at the given URL and returns the meet title (og:title) and all events with name, group, and phase.
  * @param {string} url - Meet page URL (will be normalized to /events if needed)
- * @returns {Promise<{ events: Array<{ name: string, group: string, phase: string, inField: boolean, finished: boolean }>, title: string|null }>}
+ * @returns {Promise<{ events: Array<{ name: string, group: string, phase: string, time: string, inField: boolean, finished: boolean }>, title: string|null }>}
  */
 /** Launch options for Puppeteer (headless Chrome on Render/Linux). Reduces memory use. */
 function getLaunchOptions() {
@@ -202,12 +206,37 @@ export async function getEventListElements(url) {
         const containers = Array.from(document.querySelectorAll(selector));
         if (containers.length === 0) return [];
 
-        // Prefer the list inside app-event-sidebar; else use the one with the most children (events list).
-        const inSidebar = containers.find((el) => el.closest('app-event-sidebar') !== null);
-        const container = inSidebar ?? containers.reduce((best, el) =>
-          (el.children.length > (best?.children.length ?? 0) ? el : best)
-        );
-        if (!container) return [];
+        // Event-like: contains distance (e.g. 55m), phase (Prelims/Finals/Official), or time (5:30 PM).
+        const looksLikeEvent = (text) => {
+          const t = text.trim();
+          if (!t || t.length < 4) return false;
+          return /\d+m\b/.test(t) || /\b(Prelims|Finals|Results|Official|Unofficial|Entries|Start Lists)\b/i.test(t) || /\d{1,2}:\d{2}\s*(?:AM|PM)?/i.test(t) || /\b(Boys|Girls|Men|Women)\s+\d+/i.test(t);
+        };
+
+        const navLike = new Set(['home', 'events', 'follow', 'teams', 'athletes']);
+        const isNavOnly = (items) => items.length > 0 && items.every((s) => navLike.has(s.trim().toLowerCase()) || s.trim().length < 3);
+
+        const withItems = containers.map((el) => {
+          const items = Array.from(el.children).map((c) => (c.textContent ?? '').trim());
+          return { el, items };
+        });
+
+        // Skip lists that are clearly nav (Home, Events, Follow, Teams, Athletes only).
+        const candidates = withItems.filter(({ items }) => !isNavOnly(items));
+        const withScores = (candidates.length ? candidates : withItems).map(({ el, items }) => ({
+          el,
+          items,
+          eventLikeCount: items.filter(looksLikeEvent).length,
+        }));
+
+        // Prefer the list with the most event-like items; then by most children.
+        const best = withScores.reduce((a, b) => {
+          if (a.eventLikeCount !== b.eventLikeCount) return a.eventLikeCount > b.eventLikeCount ? a : b;
+          return (a.items.length >= b.items.length) ? a : b;
+        });
+        // If the chosen list is nav-only (Home, Events, Follow, etc.), return nothing.
+        if (!best || (best.eventLikeCount === 0 && isNavOnly(best.items))) return [];
+        const container = best.el;
 
         return Array.from(container.children).map((el) =>
           (el.textContent ?? '').trim()
