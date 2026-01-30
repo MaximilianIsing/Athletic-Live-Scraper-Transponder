@@ -7,6 +7,8 @@ import puppeteer from 'puppeteer';
 const LIST_SELECTOR = 'div.list-group';
 
 const GROUP_PATTERN = /^\s*(.+?)\s+((?:Varsity|Novice|Freshmen)(?:\s+(?:Prelims|Finals))?)\s+(.+)$/;
+// When there's no group (e.g. "Men Hept 60m        Results"), parse name + phase from the end.
+const FALLBACK_PHASE_PATTERN = /^\s*(.+?)\s{2,}(Start Lists|Entries|Results|Done|Unofficial|Official|Live|Prelims|Finals)\s*$/i;
 
 const IN_FIELD_PREFIXES = [
   'Boys 55', 'Girls 55', 'Men 55', 'Women 55',
@@ -90,18 +92,31 @@ function stripLeadingNumbersFromPhase(phase) {
 }
 
 function parseEventText(text) {
-  const m = text.trim().match(GROUP_PATTERN);
-  const name = m ? m[1].trim() : text.trim();
+  const trimmed = text.trim();
+  const m = trimmed.match(GROUP_PATTERN);
+  let name, rawPhase;
+  if (m) {
+    name = m[1].trim();
+    rawPhase = m[3].trim();
+  } else {
+    const fallback = trimmed.match(FALLBACK_PHASE_PATTERN);
+    if (fallback) {
+      name = fallback[1].trim();
+      rawPhase = fallback[2].trim();
+    } else {
+      name = trimmed;
+      rawPhase = '';
+    }
+  }
   const inField = isInField(name);
-  const rawPhase = m ? m[3].trim() : '';
   const phase = stripLeadingNumbersFromPhase(rawPhase);
   const finished = FINISHED_PHASES.includes(phase);
   if (!m) {
-    return { name, group: '', phase: '', inField, finished };
+    return { name, group: 'None', phase, inField, finished };
   }
   return {
     name,
-    group: m[2],
+    group: m[2] || 'None',
     phase,
     inField,
     finished,
@@ -179,11 +194,8 @@ export async function getEventListElements(url) {
 
       const raw = await page.evaluate((selector) => {
         const containers = document.querySelectorAll(selector);
-        const container = Array.from(containers).find(
-          (el) => el.closest('app-event-sidebar') !== null
-        ) ?? Array.from(containers).sort(
-          (a, b) => b.children.length - a.children.length
-        )[0];
+        // Use the last list-group on the page (events list); earlier ones are often nav (Home, Live, etc.).
+        const container = containers.length > 0 ? containers[containers.length - 1] : null;
         if (!container) return [];
 
         return Array.from(container.children).map((el) =>
